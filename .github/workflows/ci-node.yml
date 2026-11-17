@@ -1,0 +1,67 @@
+# Reusable CI for Node / TypeScript repos (HGS-STD 7.1-7.3).
+# Called from each repo's .github/workflows/ci.yml:
+#   jobs:
+#     ci:
+#       uses: __ORG__/.github/.github/workflows/ci-node.yml@v1
+#       with: { needs-db: true }
+name: ci-node
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Folder with package.json (e.g. "frontend" in a fullstack repo)
+        type: string
+        default: "."
+      needs-db:
+        description: Start the services in docker-compose.dev.yml before the tests
+        type: boolean
+        default: false
+      run-tests:
+        description: Run `npm test` (turn off only for sites without logic)
+        type: boolean
+        default: true
+      gitleaks:
+        description: Scan for secrets (turn off in the second CI job of a fullstack repo)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-node-${{ github.workflow }}-${{ github.ref }}-${{ inputs.working-directory }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ inputs.working-directory }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+      - run: npm ci
+      # Fastest checks first, so small mistakes fail in seconds.
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - name: start test services
+        if: inputs.needs-db
+        run: docker compose -f "$GITHUB_WORKSPACE/docker-compose.dev.yml" up -d --wait # repo root, also in fullstack repos
+      - if: inputs.run-tests
+        run: npm test
+      - run: npm run build
+
+  gitleaks:
+    if: inputs.gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 } # whole history: old commits can leak secrets too
+      # Verify this image tag exists on Docker Hub once before rolling out.
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 detect --source=/repo --redact -v

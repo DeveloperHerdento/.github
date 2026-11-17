@@ -1,0 +1,72 @@
+# Reusable CI for Python repos: APIs, pipelines and models (HGS-STD 7.1-7.3, M12.1).
+# Called from each repo's .github/workflows/ci.yml:
+#   jobs:
+#     ci:
+#       uses: __ORG__/.github/.github/workflows/ci-python.yml@v1
+#       with: { needs-db: true }
+name: ci-python
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Folder with requirements.txt (e.g. "backend" in a fullstack repo)
+        type: string
+        default: "."
+      needs-db:
+        description: Start the services in docker-compose.dev.yml (repo root) before the tests
+        type: boolean
+        default: false
+      allow-no-tests:
+        description: Pass while a new repo has no tests yet. Remove once the first test exists.
+        type: boolean
+        default: false
+      gitleaks:
+        description: Scan for secrets (turn off in the second CI job of a fullstack repo)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-python-${{ github.workflow }}-${{ github.ref }}-${{ inputs.working-directory }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: ${{ inputs.working-directory }}/.python-version
+          cache: pip
+          cache-dependency-path: ${{ inputs.working-directory }}/requirements*.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - name: start test services
+        if: inputs.needs-db
+        run: docker compose -f "$GITHUB_WORKSPACE/docker-compose.dev.yml" up -d --wait # repo root, also in fullstack repos
+      - name: pytest
+        run: |
+          if [ "${{ inputs.allow-no-tests }}" = "true" ]; then
+            pytest -q || test $? -eq 5   # exit code 5 = no tests collected
+          else
+            pytest -q
+          fi
+      - name: notebooks have no outputs
+        run: |
+          python -c "import json,glob,sys; bad=[f for f in glob.glob('**/*.ipynb',recursive=True) if any(c.get('outputs') for c in json.load(open(f,encoding='utf-8'))['cells'])]; print('\n'.join(bad)); sys.exit(bool(bad))"
+
+  gitleaks:
+    if: inputs.gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # Verify this image tag exists on Docker Hub once before rolling out.
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 detect --source=/repo --redact -v
