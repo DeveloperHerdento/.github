@@ -14,8 +14,8 @@ Fixing CI here fixes it for every repo that calls these workflows.
 ## One-time setup
 
 1. Create a repository named `.github` in the organization and copy these files into it.
-2. Replace `__ORG__` and `__SECURITY_EMAIL__`.
-3. **Settings → Actions → General → Access:** "Accessible from repositories in the __ORG__ organization".
+2. Placeholders are filled in: organization `DeveloperHerdento`, security contact in `SECURITY.md`.
+3. **Settings → Actions → General → Access:** "Accessible from repositories in the DeveloperHerdento organization".
 4. Tag the first release so repos can pin it: `git tag v1 && git push origin v1`.
 
 ## Changing a workflow
