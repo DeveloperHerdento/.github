@@ -35,6 +35,10 @@ on:
         description: Shell run on the server after pull and before up, e.g. a database migration
         type: string
         default: ""
+      build-only:
+        description: Only build and push the image; a later call (with secrets) updates the server with all images
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -63,11 +67,12 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ env.STAGE }}
             ${{ env.IMAGE }}:${{ env.STAGE }}-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=image${{ inputs.image-suffix }} # one cache per image when a repo builds several
+          cache-to: type=gha,mode=max,scope=image${{ inputs.image-suffix }}
 
   deploy:
     needs: build
+    if: ${{ !inputs.build-only }}
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
     env:
