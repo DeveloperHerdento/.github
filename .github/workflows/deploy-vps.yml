@@ -39,6 +39,10 @@ on:
         description: Only build and push the image; a later call (with secrets) updates the server with all images
         type: boolean
         default: false
+      build-args:
+        description: Docker build args, one KEY=value per line (e.g. VITE_API_URL for a frontend image)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -64,6 +68,7 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.context }}/${{ inputs.dockerfile }}
           push: true
+          build-args: ${{ inputs.build-args }}
           tags: |
             ${{ env.IMAGE }}:${{ env.STAGE }}
             ${{ env.IMAGE }}:${{ env.STAGE }}-${{ github.sha }}
